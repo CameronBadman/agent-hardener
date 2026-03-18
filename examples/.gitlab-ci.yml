@@ -1,0 +1,24 @@
+agent-harden:
+  stage: test
+  image: golang:1.23-alpine
+  variables:
+    AGENT_API_KEY: "${AGENT_API_KEY}"
+    OPENAI_API_KEY: "${OPENAI_API_KEY}"
+    AGENT_ENDPOINT: "${AGENT_ENDPOINT}"
+    CGO_ENABLED: "0"
+  cache:
+    key: agent-harden-db-${CI_PROJECT_ID}
+    paths:
+      - .agent-harden-db/
+  before_script:
+    - go build -o agent-harden ./cmd/agent-harden
+  script:
+    - ./agent-harden run --config agent-harden.yaml
+  artifacts:
+    when: always
+    reports:
+      junit: agent-harden-report.xml
+    paths:
+      - agent-harden-report.xml
+    expire_in: 30 days
+  allow_failure: false
