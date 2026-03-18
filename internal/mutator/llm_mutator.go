@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -13,6 +14,20 @@ import (
 	"github.com/cameron/agent-harden/internal/config"
 	"github.com/cameron/agent-harden/internal/scorer"
 )
+
+// headerTransport injects fixed headers into every outbound request.
+type headerTransport struct {
+	base    http.RoundTripper
+	headers map[string]string
+}
+
+func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	r := req.Clone(req.Context())
+	for k, v := range t.headers {
+		r.Header.Set(k, v)
+	}
+	return t.base.RoundTrip(r)
+}
 
 const mutatorSystemPrompt = `You are a red-team AI security researcher specializing in adversarial prompt engineering.
 
@@ -47,15 +62,25 @@ type LLMMutator struct {
 	cfg    *config.Config
 }
 
-// NewLLMMutator creates a mutator backed by the judge LLM config.
+// NewLLMMutator creates a mutator using the dedicated mutator LLM config.
+// Defaults to claude-sonnet-4-6 — more capable than the judge for
+// generating creative technique-diverse variants.
 func NewLLMMutator(cfg *config.Config) *LLMMutator {
-	judgeCfg := openai.DefaultConfig(cfg.Judge.APIKey)
-	if cfg.Judge.Endpoint != "" {
-		judgeCfg.BaseURL = cfg.Judge.Endpoint
+	mutCfg := openai.DefaultConfig(cfg.Mutator.APIKey)
+	if cfg.Mutator.Endpoint != "" {
+		mutCfg.BaseURL = cfg.Mutator.Endpoint
+	}
+	if len(cfg.Mutator.ExtraHeaders) > 0 {
+		mutCfg.HTTPClient = &http.Client{
+			Transport: &headerTransport{
+				base:    http.DefaultTransport,
+				headers: cfg.Mutator.ExtraHeaders,
+			},
+		}
 	}
 	return &LLMMutator{
-		client: openai.NewClientWithConfig(judgeCfg),
-		model:  cfg.Judge.Model,
+		client: openai.NewClientWithConfig(mutCfg),
+		model:  cfg.Mutator.Model,
 		cfg:    cfg,
 	}
 }

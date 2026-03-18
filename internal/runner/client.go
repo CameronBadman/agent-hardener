@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -14,11 +15,20 @@ type ChatClient struct {
 }
 
 // NewChatClient creates a client pointed at the given endpoint.
-// endpoint may be empty for the default OpenAI URL.
-func NewChatClient(endpoint, apiKey, model string) *ChatClient {
+// extraHeaders are injected into every request — used for GitLab AI Gateway
+// headers (e.g. x-gitlab-*) and Anthropic-specific headers.
+func NewChatClient(endpoint, apiKey, model string, extraHeaders map[string]string) *ChatClient {
 	cfg := openai.DefaultConfig(apiKey)
 	if endpoint != "" {
 		cfg.BaseURL = endpoint
+	}
+	if len(extraHeaders) > 0 {
+		cfg.HTTPClient = &http.Client{
+			Transport: &headerTransport{
+				base:    http.DefaultTransport,
+				headers: extraHeaders,
+			},
+		}
 	}
 	return &ChatClient{
 		client: openai.NewClientWithConfig(cfg),
@@ -44,4 +54,19 @@ func (c *ChatClient) Chat(ctx context.Context, systemPrompt, userMessage string)
 		return "", fmt.Errorf("no choices in response")
 	}
 	return resp.Choices[0].Message.Content, nil
+}
+
+// headerTransport injects fixed headers into every outbound request.
+type headerTransport struct {
+	base    http.RoundTripper
+	headers map[string]string
+}
+
+func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Clone the request to avoid mutating the original
+	r := req.Clone(req.Context())
+	for k, v := range t.headers {
+		r.Header.Set(k, v)
+	}
+	return t.base.RoundTrip(r)
 }

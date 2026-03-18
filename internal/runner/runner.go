@@ -24,7 +24,7 @@ type AgentRunner struct {
 
 // NewAgentRunner constructs a runner for the given config.
 func NewAgentRunner(cfg *config.Config, dryRun bool) *AgentRunner {
-	client := NewChatClient(cfg.Target.Endpoint, cfg.Target.APIKey, cfg.Target.Model)
+	client := NewChatClient(cfg.Target.Endpoint, cfg.Target.APIKey, cfg.Target.Model, nil)
 	// Allow up to concurrency requests per second
 	limiter := NewTokenBucket(float64(cfg.Run.Concurrency), float64(cfg.Run.Concurrency))
 	return &AgentRunner{
