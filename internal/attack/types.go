@@ -6,12 +6,16 @@ import "time"
 type AttackCategory string
 
 const (
-	CategoryInjection  AttackCategory = "injection"
-	CategoryJailbreak  AttackCategory = "jailbreak"
-	CategoryPolicy     AttackCategory = "policy"
-	CategoryToolAbuse  AttackCategory = "tool_abuse"
-	CategoryMutation   AttackCategory = "mutation"
-	CategoryUnknown    AttackCategory = "unknown"
+	CategoryInjection         AttackCategory = "injection"
+	CategoryJailbreak         AttackCategory = "jailbreak"
+	CategoryPolicy            AttackCategory = "policy"
+	CategoryToolAbuse         AttackCategory = "tool_abuse"
+	CategoryHarm              AttackCategory = "harm"
+	CategoryPrivacy           AttackCategory = "privacy"
+	CategorySocialEngineering AttackCategory = "social_engineering"
+	CategoryMalware           AttackCategory = "malware"
+	CategoryMutation          AttackCategory = "mutation"
+	CategoryUnknown           AttackCategory = "unknown"
 )
 
 // AttackPrompt is a single adversarial prompt in the corpus.
