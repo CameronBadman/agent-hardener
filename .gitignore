@@ -1,0 +1,11 @@
+# Binary
+agent-harden
+
+# Runtime DB (persisted across CI runs via cache, not git)
+.agent-harden-db/
+
+# Reports
+*.xml
+
+# Go build cache
+*.test
