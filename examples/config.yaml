@@ -4,7 +4,7 @@ target:
   name: "My Agent"
   endpoint: "${AGENT_ENDPOINT}"
   api_key: "${AGENT_API_KEY}"
-  model: "gpt-4o"
+  model: "${AGENT_MODEL}"
   system_prompt: |
     You are a helpful customer service assistant for Acme Corp.
     You help customers with order inquiries, returns, and general product questions.
@@ -22,10 +22,21 @@ embeddings:
   api_key: "${OPENAI_API_KEY}"
   model: "text-embedding-3-small"
 
+# Judge: scores responses — defaults to claude-haiku (fast, cheap per-response)
+# Override model with AGENT_HARDEN_JUDGE_MODEL env var
+# e.g. AGENT_HARDEN_JUDGE_MODEL=claude-sonnet-4-6 for higher accuracy
 judge:
-  endpoint: "https://api.openai.com/v1"
-  api_key: "${OPENAI_API_KEY}"
-  model: "gpt-4o-mini"
+  endpoint: "${ANTHROPIC_ENDPOINT}"   # defaults to https://api.anthropic.com/v1
+  api_key: "${ANTHROPIC_API_KEY}"
+  model: "${JUDGE_MODEL}"             # empty → AGENT_HARDEN_JUDGE_MODEL → claude-haiku-4-5-20251001
+
+# Mutator: generates attack variants — defaults to claude-sonnet-4-6
+# Override model with AGENT_HARDEN_MUTATOR_MODEL env var
+# WARNING: do not set this to Opus — cost = mutation_count × mutation_depth × Opus price
+mutator:
+  endpoint: "${ANTHROPIC_ENDPOINT}"
+  api_key: "${ANTHROPIC_API_KEY}"
+  model: "${MUTATOR_MODEL}"           # empty → AGENT_HARDEN_MUTATOR_MODEL → claude-sonnet-4-6
 
 database:
   path: "./.agent-harden-db"
