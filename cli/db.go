@@ -86,8 +86,8 @@ func newDBListCmd() *cobra.Command {
 			}
 
 			for _, a := range attacks {
-				fmt.Fprintf(os.Stdout, "%-20s %-12s %-8s gen=%-2d score=%.3f  %s\n",
-					a.ID, a.Category, a.Severity, a.Generation, a.BestScore, truncateStr(a.Text, 60))
+				fmt.Fprintf(os.Stdout, "%-20s %-12s %-18s %-14s %-8s gen=%-2d score=%.3f  %s\n",
+					a.ID, a.Category, a.Technique, a.Target, a.Severity, a.Generation, a.BestScore, truncateStr(a.Text, 60))
 			}
 			fmt.Fprintf(os.Stdout, "\n%d attacks\n", len(attacks))
 			return nil

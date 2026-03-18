@@ -170,6 +170,8 @@ func attackToMetadata(a AttackPrompt) map[string]string {
 	tags := strings.Join(a.Tags, ",")
 	return map[string]string{
 		"category":   string(a.Category),
+		"technique":  string(a.Technique),
+		"target":     string(a.Target),
 		"severity":   a.Severity,
 		"tags":       tags,
 		"parent_id":  a.ParentID,
@@ -182,11 +184,13 @@ func attackToMetadata(a AttackPrompt) map[string]string {
 
 func metadataToAttack(id, content string, meta map[string]string) AttackPrompt {
 	a := AttackPrompt{
-		ID:       id,
-		Text:     content,
-		Category: CategoryFromString(meta["category"]),
-		Severity: meta["severity"],
-		ParentID: meta["parent_id"],
+		ID:        id,
+		Text:      content,
+		Category:  CategoryFromString(meta["category"]),
+		Technique: AttackTechnique(meta["technique"]),
+		Target:    AttackTarget(meta["target"]),
+		Severity:  meta["severity"],
+		ParentID:  meta["parent_id"],
 	}
 	if tags := meta["tags"]; tags != "" {
 		a.Tags = strings.Split(tags, ",")
