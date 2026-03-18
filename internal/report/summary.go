@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cameron/agent-harden/internal/optimizer"
+	"github.com/cameron/agent-harden/internal/patcher"
 	"github.com/cameron/agent-harden/internal/scorer"
 )
 
@@ -51,6 +52,37 @@ func PrintSummary(w io.Writer, result *optimizer.Result, targetName string, elap
 	fmt.Fprintf(w, "%s\n\n", strings.Repeat("─", 60))
 }
 
+// PrintPatchSuggestion writes the hardened prompt suggestion to w.
+func PrintPatchSuggestion(w io.Writer, result *patcher.Result, outPath string) {
+	fmt.Fprintf(w, "\n%s\n", strings.Repeat("─", 60))
+	fmt.Fprintf(w, "  SUGGESTED SYSTEM PROMPT PATCH\n")
+	fmt.Fprintf(w, "%s\n\n", strings.Repeat("─", 60))
+
+	fmt.Fprintf(w, "  %s\n\n", result.Summary)
+
+	fmt.Fprintf(w, "  Changes made:\n")
+	for _, a := range result.Annotations {
+		fmt.Fprintf(w, "  [%s] %s → %s\n", a.FindingID, a.Technique, a.Target)
+		fmt.Fprintf(w, "    %s\n\n", a.Change)
+	}
+
+	fmt.Fprintf(w, "%s\n", strings.Repeat("─", 60))
+	fmt.Fprintf(w, "  HARDENED SYSTEM PROMPT\n")
+	fmt.Fprintf(w, "%s\n\n", strings.Repeat("─", 60))
+	for _, line := range strings.Split(result.HardenedPrompt, "\n") {
+		fmt.Fprintf(w, "  %s\n", line)
+	}
+
+	if outPath != "" {
+		fmt.Fprintf(w, "\n%s\n", strings.Repeat("─", 60))
+		fmt.Fprintf(w, "  Written to: %s\n", outPath)
+		fmt.Fprintf(w, "  Review the changes and replace your config when ready.\n")
+	} else {
+		fmt.Fprintf(w, "\n  Run with --auto-patch to write a hardened config file.\n")
+	}
+	fmt.Fprintf(w, "%s\n\n", strings.Repeat("─", 60))
+}
+
 func printFindings(w io.Writer, findings []optimizer.Finding, tier scorer.Tier) {
 	for _, f := range findings {
 		atk := f.Result.Attack
@@ -60,13 +92,14 @@ func printFindings(w io.Writer, findings []optimizer.Finding, tier scorer.Tier) 
 			atk.ID,
 			f.Score.Value,
 		)
-		fmt.Fprintf(w, "    Attack: %s\n", truncate(atk.Text, 100))
-		fmt.Fprintf(w, "    Reason: %s\n", f.Score.Reason)
+		fmt.Fprintf(w, "    Attack:    %s\n", truncate(atk.Text, 100))
+		fmt.Fprintf(w, "    Technique: %s → %s\n", atk.Technique, atk.Target)
+		fmt.Fprintf(w, "    Reason:    %s\n", f.Score.Reason)
 		if len(f.Score.ViolatedPolicies) > 0 {
-			fmt.Fprintf(w, "    Policies: %s\n", strings.Join(f.Score.ViolatedPolicies, ", "))
+			fmt.Fprintf(w, "    Policies:  %s\n", strings.Join(f.Score.ViolatedPolicies, ", "))
 		}
 		if tier == scorer.TierViolation && f.Result.Response != "" {
-			fmt.Fprintf(w, "    Response: %s\n", truncate(f.Result.Response, 150))
+			fmt.Fprintf(w, "    Response:  %s\n", truncate(f.Result.Response, 150))
 		}
 		fmt.Fprintln(w)
 	}
