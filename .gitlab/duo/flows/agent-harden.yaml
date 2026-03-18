@@ -1,0 +1,90 @@
+# agent-harden GitLab Duo External Agent Flow
+#
+# Triggers:
+#   - Mention:  @agent-harden-bot scan this MR
+#   - Assign:   assign the service account as a reviewer on any MR
+#
+# What it does:
+#   1. Builds agent-harden from source
+#   2. Runs adversarial attacks against your target agent using Claude
+#      via the GitLab AI Gateway (no separate Anthropic key needed)
+#   3. Posts a summary comment on the MR with violation counts
+#   4. Uploads the JUnit XML as a pipeline artifact
+#
+# Required CI/CD variables (set at project or group level):
+#   AGENT_ENDPOINT   - your target agent's OpenAI-compatible endpoint
+#   AGENT_API_KEY    - API key for the target agent
+#   AGENT_MODEL      - model name your agent uses (e.g. gpt-4o)
+#
+# Optional:
+#   AGENT_HARDEN_CONFIG       - path to config file (default: agent-harden.yaml)
+#   AGENT_HARDEN_JUDGE_MODEL  - override judge model (default: claude-haiku-4-5-20251001)
+#   AGENT_HARDEN_MUTATOR_MODEL - override mutator model (default: claude-sonnet-4-6)
+#                                DO NOT set to claude-opus-* — cost scales with mutations
+
+injectGatewayToken: true
+image: golang:1.23-alpine
+
+commands:
+  - apk add --no-cache git curl jq
+
+  # Clone the project containing the agent-harden config and source
+  - git clone "https://gitlab-ci-token:${AI_FLOW_GITLAB_TOKEN}@${AI_FLOW_GITLAB_HOSTNAME}/${AI_FLOW_PROJECT_PATH}" /workspace
+  - cd /workspace
+
+  # Build agent-harden from source
+  - go build -o /usr/local/bin/agent-harden ./cmd/agent-harden
+
+  # Route judge + mutator through the GitLab AI Gateway (Anthropic)
+  # AI_FLOW_AI_GATEWAY_TOKEN is injected automatically when injectGatewayToken: true
+  - export ANTHROPIC_API_KEY="$AI_FLOW_AI_GATEWAY_TOKEN"
+  - export ANTHROPIC_ENDPOINT="https://cloud.gitlab.com/ai/v1/proxy/anthropic/v1"
+
+  # Pass GitLab AI Gateway headers through to go-openai HTTP clients
+  - export AGENT_HARDEN_EXTRA_HEADERS="$AI_FLOW_AI_GATEWAY_HEADERS"
+
+  # Run the scan — uses AGENT_HARDEN_CONFIG if set, else agent-harden.yaml
+  - |
+    CONFIG="${AGENT_HARDEN_CONFIG:-agent-harden.yaml}"
+    agent-harden run --config "$CONFIG" --junit /tmp/agent-harden-report.xml || SCAN_FAILED=1
+
+  # Parse results and post a comment on the MR
+  - |
+    VIOLATIONS=$(grep -c '<failure' /tmp/agent-harden-report.xml 2>/dev/null || echo 0)
+    TOTAL=$(grep -o 'tests="[0-9]*"' /tmp/agent-harden-report.xml | head -1 | grep -o '[0-9]*' || echo 0)
+
+    if [ "${VIOLATIONS:-0}" -gt 0 ]; then
+      ICON="🚨"
+      STATUS="**FAILED** — ${VIOLATIONS} violation(s) detected out of ${TOTAL} attacks"
+    else
+      ICON="✅"
+      STATUS="**PASSED** — no violations detected (${TOTAL} attacks run)"
+    fi
+
+    BODY="## ${ICON} agent-harden Security Scan\n\n${STATUS}\n\n| Metric | Value |\n|---|---|\n| Attacks run | ${TOTAL} |\n| Violations | ${VIOLATIONS} |\n| Judge model | ${AGENT_HARDEN_JUDGE_MODEL:-claude-haiku-4-5-20251001} |\n| Mutator model | ${AGENT_HARDEN_MUTATOR_MODEL:-claude-sonnet-4-6} |\n\n*Powered by [agent-harden](https://github.com/cameron/agent-harden) via GitLab Duo*"
+
+    if [ -n "$MR_IID" ]; then
+      PROJECT_ENCODED=$(echo "$AI_FLOW_PROJECT_PATH" | sed 's|/|%2F|g')
+      curl --silent --request POST \
+        --header "PRIVATE-TOKEN: $AI_FLOW_GITLAB_TOKEN" \
+        --header "Content-Type: application/json" \
+        --data "{\"body\": \"$(echo "$BODY" | sed 's/\\/\\\\/g; s/"/\\"/g')\"}" \
+        "https://${AI_FLOW_GITLAB_HOSTNAME}/api/v4/projects/${PROJECT_ENCODED}/merge_requests/${MR_IID}/notes" \
+        || echo "warning: failed to post MR comment"
+    fi
+
+  # Exit with failure if violations were found
+  - |
+    if [ "${SCAN_FAILED:-0}" = "1" ]; then
+      echo "agent-harden: violations found — failing flow"
+      exit 1
+    fi
+
+variables:
+  - AGENT_ENDPOINT
+  - AGENT_API_KEY
+  - AGENT_MODEL
+  - AGENT_HARDEN_CONFIG
+  - AGENT_HARDEN_JUDGE_MODEL
+  - AGENT_HARDEN_MUTATOR_MODEL
+  - MR_IID
