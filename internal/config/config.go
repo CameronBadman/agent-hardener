@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"regexp"
@@ -15,6 +16,7 @@ type Config struct {
 	Target     TargetConfig     `yaml:"target"`
 	Embeddings EmbeddingsConfig `yaml:"embeddings"`
 	Judge      JudgeConfig      `yaml:"judge"`
+	Mutator    MutatorConfig    `yaml:"mutator"`
 	Database   DatabaseConfig   `yaml:"database"`
 	Run        RunConfig        `yaml:"run"`
 	Heuristics HeuristicsConfig `yaml:"heuristics"`
@@ -37,9 +39,19 @@ type EmbeddingsConfig struct {
 }
 
 type JudgeConfig struct {
-	Endpoint string `yaml:"endpoint"`
-	APIKey   string `yaml:"api_key"`
-	Model    string `yaml:"model"`
+	Endpoint     string            `yaml:"endpoint"`
+	APIKey       string            `yaml:"api_key"`
+	Model        string            `yaml:"model"`
+	ExtraHeaders map[string]string `yaml:"extra_headers,omitempty"`
+}
+
+// MutatorConfig mirrors JudgeConfig but with separate model defaults.
+// If not set in YAML, it inherits from JudgeConfig in applyDefaults.
+type MutatorConfig struct {
+	Endpoint     string            `yaml:"endpoint"`
+	APIKey       string            `yaml:"api_key"`
+	Model        string            `yaml:"model"`
+	ExtraHeaders map[string]string `yaml:"extra_headers,omitempty"`
 }
 
 type DatabaseConfig struct {
@@ -48,13 +60,13 @@ type DatabaseConfig struct {
 }
 
 type RunConfig struct {
-	MaxAttacks             int     `yaml:"max_attacks"`
-	MutationThreshold      float64 `yaml:"mutation_threshold"`
-	ViolationThreshold     float64 `yaml:"violation_threshold"`
-	MutationCount          int     `yaml:"mutation_count"`
-	MutationDepth          int     `yaml:"mutation_depth"`
-	StoreVariantThreshold  float64 `yaml:"store_variant_threshold"`
-	Concurrency            int     `yaml:"concurrency"`
+	MaxAttacks            int     `yaml:"max_attacks"`
+	MutationThreshold     float64 `yaml:"mutation_threshold"`
+	ViolationThreshold    float64 `yaml:"violation_threshold"`
+	MutationCount         int     `yaml:"mutation_count"`
+	MutationDepth         int     `yaml:"mutation_depth"`
+	StoreVariantThreshold float64 `yaml:"store_variant_threshold"`
+	Concurrency           int     `yaml:"concurrency"`
 }
 
 type HeuristicsConfig struct {
@@ -78,7 +90,6 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("reading config %s: %w", path, err)
 	}
 
-	// Expand environment variables in the form ${VAR} or $VAR
 	expanded := os.ExpandEnv(string(data))
 
 	var cfg Config
@@ -100,6 +111,7 @@ func Load(path string) (*Config, error) {
 }
 
 func applyDefaults(cfg *Config) {
+	// Run parameters
 	if cfg.Run.MaxAttacks == 0 {
 		cfg.Run.MaxAttacks = DefaultMaxAttacks
 	}
@@ -121,20 +133,72 @@ func applyDefaults(cfg *Config) {
 	if cfg.Run.Concurrency == 0 {
 		cfg.Run.Concurrency = DefaultConcurrency
 	}
+
+	// Storage / output
 	if cfg.Database.Path == "" {
 		cfg.Database.Path = DefaultDatabasePath
 	}
 	if cfg.Output.JUnitPath == "" {
 		cfg.Output.JUnitPath = DefaultJUnitPath
 	}
+
+	// Embeddings
 	if cfg.Embeddings.Model == "" {
 		cfg.Embeddings.Model = DefaultEmbeddingModel
+	}
+
+	// Target
+	if cfg.Target.Model == "" {
+		cfg.Target.Model = DefaultTargetModel
+	}
+
+	// Judge — env var AGENT_HARDEN_JUDGE_MODEL overrides YAML
+	if cfg.Judge.Endpoint == "" {
+		cfg.Judge.Endpoint = DefaultJudgeEndpoint
+	}
+	if m := os.Getenv(EnvJudgeModel); m != "" {
+		cfg.Judge.Model = m
 	}
 	if cfg.Judge.Model == "" {
 		cfg.Judge.Model = DefaultJudgeModel
 	}
-	if cfg.Target.Model == "" {
-		cfg.Target.Model = DefaultTargetModel
+	applyExtraHeadersFromEnv(&cfg.Judge.ExtraHeaders)
+
+	// Mutator — inherits from Judge if not configured, then applies its own defaults
+	// env var AGENT_HARDEN_MUTATOR_MODEL overrides YAML
+	if cfg.Mutator.Endpoint == "" {
+		cfg.Mutator.Endpoint = cfg.Judge.Endpoint
+	}
+	if cfg.Mutator.APIKey == "" {
+		cfg.Mutator.APIKey = cfg.Judge.APIKey
+	}
+	if m := os.Getenv(EnvMutatorModel); m != "" {
+		cfg.Mutator.Model = m
+	}
+	if cfg.Mutator.Model == "" {
+		cfg.Mutator.Model = DefaultMutatorModel
+	}
+	if cfg.Mutator.ExtraHeaders == nil {
+		cfg.Mutator.ExtraHeaders = cfg.Judge.ExtraHeaders
+	}
+}
+
+// applyExtraHeadersFromEnv merges headers from AGENT_HARDEN_EXTRA_HEADERS (JSON)
+// into the provided map. Used to inject GitLab AI Gateway headers at runtime.
+func applyExtraHeadersFromEnv(headers *map[string]string) {
+	raw := os.Getenv("AGENT_HARDEN_EXTRA_HEADERS")
+	if raw == "" {
+		return
+	}
+	var parsed map[string]string
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return // silently ignore malformed JSON
+	}
+	if *headers == nil {
+		*headers = make(map[string]string)
+	}
+	for k, v := range parsed {
+		(*headers)[k] = v
 	}
 }
 
