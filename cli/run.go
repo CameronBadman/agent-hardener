@@ -13,6 +13,7 @@ import (
 	"github.com/cameron/agent-harden/internal/config"
 	"github.com/cameron/agent-harden/internal/mutator"
 	"github.com/cameron/agent-harden/internal/optimizer"
+	"github.com/cameron/agent-harden/internal/patcher"
 	"github.com/cameron/agent-harden/internal/report"
 	"github.com/cameron/agent-harden/internal/runner"
 	"github.com/cameron/agent-harden/internal/scorer"
@@ -26,6 +27,7 @@ func NewRunCmd() *cobra.Command {
 		noJudge    bool
 		dryRun     bool
 		junitPath  string
+		autoPatch  bool
 	)
 
 	cmd := &cobra.Command{
@@ -113,6 +115,26 @@ for promising attacks. Writes a JUnit XML report for GitLab CI integration.`,
 				fmt.Fprintf(os.Stderr, "JUnit report written to %s\n", cfg.Output.JUnitPath)
 			}
 
+			// Generate system prompt patch if violations found and judge is enabled
+			if len(result.Violations) > 0 && !noJudge {
+				fmt.Fprintf(os.Stderr, "Generating system prompt patch for %d violation(s)...\n", len(result.Violations))
+				p := patcher.NewLLMPatcher(cfg)
+				patchResult, patchErr := p.Harden(ctx, cfg.Target.SystemPrompt, result.Violations)
+				if patchErr != nil {
+					fmt.Fprintf(os.Stderr, "warning: patch generation failed: %v\n", patchErr)
+				} else {
+					var outPath string
+					if autoPatch {
+						outPath, patchErr = patcher.WriteHardenedConfig(configPath, patchResult.HardenedPrompt)
+						if patchErr != nil {
+							fmt.Fprintf(os.Stderr, "warning: could not write hardened config: %v\n", patchErr)
+							outPath = ""
+						}
+					}
+					report.PrintPatchSuggestion(os.Stdout, patchResult, outPath)
+				}
+			}
+
 			// Exit 1 if violations found
 			if len(result.Violations) > 0 {
 				os.Exit(1)
@@ -125,6 +147,7 @@ for promising attacks. Writes a JUnit XML report for GitLab CI integration.`,
 	cmd.Flags().BoolVar(&noJudge, "no-judge", false, "Disable LLM judge scorer (heuristic-only)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Do not make API calls to the target agent")
 	cmd.Flags().StringVar(&junitPath, "junit", "", "Override JUnit XML output path")
+	cmd.Flags().BoolVar(&autoPatch, "auto-patch", false, "Write a hardened config file when violations are found")
 
 	return cmd
 }
