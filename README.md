@@ -166,7 +166,7 @@ agent-harden:
 
 GitLab renders the JUnit report natively, so each attack becomes a test case and confirmed prompt-security failures become visible in the same UI teams already use for build health.
 
-For hackathon-group compatibility, the repo also includes GitLab catalog template files under [`agents/agent.yml.template`](/home/cameron/projects/agent-harden/agents/agent.yml.template) and [`flows/flow.yml.template`](/home/cameron/projects/agent-harden/flows/flow.yml.template), alongside the runnable external flow at [`.gitlab/duo/flows/agent-harden.yaml`](/home/cameron/projects/agent-harden/.gitlab/duo/flows/agent-harden.yaml).
+For hackathon-group compatibility, the repo also includes GitLab catalog template files under [`agents/agent.yml.template`](/home/cameron/projects/agent-harden/agents/agent.yml.template) and [`flows/flow.yml.template`](/home/cameron/projects/agent-harden/flows/flow.yml.template). The actual Duo-connected CI scan implementation lives at [`.gitlab/duo/flows/agent-harden.yaml`](/home/cameron/projects/agent-harden/.gitlab/duo/flows/agent-harden.yaml).
 
 ## Hackathon demo flow
 

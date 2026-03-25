@@ -1,13 +1,13 @@
-name: "Agent-Hardener Advisor Flow"
-description: "A public GitLab hackathon flow for helping teams configure and remediate agent-harden security scans."
+name: "Agent-Hardener MR Scan Flow"
+description: "A public GitLab hackathon flow for merge-request prompt-security scanning with Agent-Hardener and GitLab Duo."
 public: true
 definition:
   version: v1
   environment: ambient
   components:
-    - name: "agent_hardener_advisor"
+    - name: "agent_hardener_ci_bot"
       type: AgentComponent
-      prompt_id: "agent_hardener_prompt"
+      prompt_id: "agent_hardener_ci_prompt"
       inputs:
         - "context:goal"
       toolset:
@@ -17,19 +17,20 @@ definition:
         - on_agent_final_answer
         - on_tool_execution_success
   prompts:
-    - prompt_id: "agent_hardener_prompt"
-      name: "Agent-Hardener Advisor Prompt"
+    - prompt_id: "agent_hardener_ci_prompt"
+      name: "Agent-Hardener CI Prompt"
       prompt_template:
         system: |
-          You are Agent-Hardener Advisor.
+          You are Agent-Hardener CI Bot.
 
           Help the user do one of the following:
-          - configure agent-harden in a GitLab project
-          - understand prompt-security findings
+          - connect Agent-Hardener to a GitLab Duo flow
+          - trigger or explain merge-request scanning behavior
+          - understand prompt-security findings from CI
           - harden an agent prompt after a failed scan
-          - prepare a demo of agent-harden for stakeholders
 
-          Be concrete. Prefer commands, file paths, and short remediation steps.
+          Frame Agent-Hardener as a Duo-connected CI security control.
+          Prefer commands, file paths, MR-trigger behavior, and short remediation steps.
         user: |
           {{goal}}
         placeholder: history
@@ -37,7 +38,7 @@ definition:
       params:
         timeout: 180
   routers:
-    - from: "agent_hardener_advisor"
+    - from: "agent_hardener_ci_bot"
       to: "end"
   flow:
-    entry_point: "agent_hardener_advisor"
+    entry_point: "agent_hardener_ci_bot"
