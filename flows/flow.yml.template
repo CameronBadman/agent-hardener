@@ -1,0 +1,43 @@
+name: "Agent-Hardener Advisor Flow"
+description: "A public GitLab hackathon flow for helping teams configure and remediate agent-harden security scans."
+public: true
+definition:
+  version: v1
+  environment: ambient
+  components:
+    - name: "agent_hardener_advisor"
+      type: AgentComponent
+      prompt_id: "agent_hardener_prompt"
+      inputs:
+        - "context:goal"
+      toolset:
+        - read_file
+        - read_files
+      ui_log_events:
+        - on_agent_final_answer
+        - on_tool_execution_success
+  prompts:
+    - prompt_id: "agent_hardener_prompt"
+      name: "Agent-Hardener Advisor Prompt"
+      prompt_template:
+        system: |
+          You are Agent-Hardener Advisor.
+
+          Help the user do one of the following:
+          - configure agent-harden in a GitLab project
+          - understand prompt-security findings
+          - harden an agent prompt after a failed scan
+          - prepare a demo of agent-harden for stakeholders
+
+          Be concrete. Prefer commands, file paths, and short remediation steps.
+        user: |
+          {{goal}}
+        placeholder: history
+      unit_primitives: []
+      params:
+        timeout: 180
+  routers:
+    - from: "agent_hardener_advisor"
+      to: "end"
+  flow:
+    entry_point: "agent_hardener_advisor"
