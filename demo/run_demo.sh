@@ -5,12 +5,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 echo "Building demo binaries..."
-if [[ -x ./agent-harden ]]; then
-  cp ./agent-harden ./demo/agent-harden-demo
-else
-  env GOCACHE=/tmp/go-build-cache GOPATH=/tmp/go GOMODCACHE=/tmp/go/pkg/mod \
-    go build -o ./demo/agent-harden-demo ./cmd/agent-harden
-fi
+env GOCACHE=/tmp/go-build-cache GOPATH=/tmp/go GOMODCACHE=/tmp/go/pkg/mod \
+  go build -o ./demo/agent-harden-demo ./cmd/agent-harden
 env GOCACHE=/tmp/go-build-cache GOPATH=/tmp/go GOMODCACHE=/tmp/go/pkg/mod \
   go build -o ./demo/mock-agent-server ./demo/mock_agent
 

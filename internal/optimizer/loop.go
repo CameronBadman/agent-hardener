@@ -3,8 +3,9 @@ package optimizer
 import (
 	"context"
 	"fmt"
-	"log/slog"
+	"os"
 	"sync"
+	"sync/atomic"
 
 	"github.com/cameron/agent-harden/internal/attack"
 	"github.com/cameron/agent-harden/internal/config"
@@ -37,6 +38,9 @@ type Loop struct {
 	mutator  mutator.Mutator
 	noJudge  bool
 	verbose  bool
+	progress bool
+	totalAttacks int
+	progressCount atomic.Int64
 }
 
 // NewLoop creates a configured optimization loop.
@@ -58,6 +62,7 @@ func NewLoop(
 		mutator:   mut,
 		noJudge:   noJudge,
 		verbose:   cfg.Output.Verbose,
+		progress:  os.Getenv("AGENT_HARDEN_PROGRESS") != "",
 	}
 }
 
@@ -69,8 +74,9 @@ func (l *Loop) Run(ctx context.Context) (*Result, error) {
 	}
 
 	if l.verbose {
-		slog.Info("loaded attacks", "count", len(attacks))
+		l.progressf("loaded %d attacks", len(attacks))
 	}
+	l.totalAttacks = len(attacks)
 
 	result := &Result{}
 	sem := make(chan struct{}, l.cfg.Run.Concurrency)
@@ -119,6 +125,21 @@ func (l *Loop) processAttack(ctx context.Context, atk attack.AttackPrompt, depth
 	var findings []Finding
 	var errs []error
 
+	if l.progress && depth == 0 {
+		n := l.progressCount.Add(1)
+		fmt.Fprintf(os.Stderr, "%s[%d/%d]%s %s%s%s %s->%s %s%s%s\n",
+			colorBlue, n, l.totalAttacks, colorReset,
+			colorBold, atk.ID, colorReset,
+			colorDim, colorReset,
+			colorCyan, atk.Technique, colorReset,
+		)
+	}
+
+	if l.verbose {
+		l.progressf("attack %s start category=%s technique=%s target=%s depth=%d",
+			atk.ID, atk.Category, atk.Technique, atk.Target, depth)
+	}
+
 	// Execute the attack
 	res, err := l.runner.Execute(ctx, atk)
 	if err != nil {
@@ -136,12 +157,11 @@ func (l *Loop) processAttack(ctx context.Context, atk attack.AttackPrompt, depth
 	}
 
 	if l.verbose {
-		slog.Info("scored attack",
-			"id", atk.ID,
-			"score", fmt.Sprintf("%.3f", s.Value),
-			"tier", s.Tier.String(),
-			"reason", s.Reason,
-		)
+		l.progressf("attack %s scored score=%.3f tier=%s",
+			atk.ID, s.Value, s.Tier.String())
+	} else if l.progress && depth == 0 {
+		fmt.Fprintf(os.Stderr, "      result: %s%s%s %.2f\n",
+			tierColor(s.Tier), tierLabel(s.Tier), colorReset, s.Value)
 	}
 
 	findings = append(findings, Finding{Result: res, Score: s})
@@ -161,10 +181,20 @@ func (l *Loop) processAttack(ctx context.Context, atk attack.AttackPrompt, depth
 		depth < l.cfg.Run.MutationDepth &&
 		l.mutator != nil &&
 		!l.noJudge { // mutations require LLM
+		if l.progress && depth == 0 {
+			fmt.Fprintf(os.Stderr, "      mutating: %d variant(s)\n", l.cfg.Run.MutationCount)
+		}
+		if l.verbose {
+			l.progressf("attack %s mutator start score=%.3f depth=%d count=%d",
+				atk.ID, s.Value, depth, l.cfg.Run.MutationCount)
+		}
 		variants, mutErr := l.mutator.Mutate(ctx, atk, s, l.cfg.Run.MutationCount)
 		if mutErr != nil {
 			errs = append(errs, fmt.Errorf("mutating attack %s: %w", atk.ID, mutErr))
 		} else {
+			if l.verbose {
+				l.progressf("attack %s mutator done variants=%d", atk.ID, len(variants))
+			}
 			for _, v := range variants {
 				subFindings, subErrs := l.processAttack(ctx, v, depth+1)
 				errs = append(errs, subErrs...)
@@ -194,11 +224,24 @@ func (l *Loop) scoreResponse(ctx context.Context, atk attack.AttackPrompt, respo
 
 	// Only call judge if heuristic returned TierMaybe and judge is enabled
 	if !l.noJudge && l.judge != nil && hScore.Tier == scorer.TierMaybe {
+		if l.progress {
+			fmt.Fprintf(os.Stderr, "      %sjudging with Anthropic...%s\n", colorYellow, colorReset)
+		}
+		if l.verbose {
+			l.progressf("attack %s judge start heuristic=%.3f tier=%s",
+				atk.ID, hScore.Value, hScore.Tier.String())
+		}
 		jScore, err := l.judge.Score(ctx, l.cfg.Target.SystemPrompt, atk.Text, response)
 		if err != nil {
 			// Judge failure is non-fatal; fall back to heuristic
-			slog.Warn("judge scorer failed, using heuristic only", "error", err)
+			if l.verbose {
+				l.progressf("attack %s judge failed: %v", atk.ID, err)
+			}
 			return hScore, nil
+		}
+		if l.verbose {
+			l.progressf("attack %s judge done score=%.3f tier=%s",
+				atk.ID, jScore.Value, jScore.Tier.String())
 		}
 		return scorer.MergeScores(hScore, jScore), nil
 	}
@@ -244,3 +287,40 @@ func maxFloat(a, b float64) float64 {
 	}
 	return b
 }
+
+func (l *Loop) progressf(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "[progress] "+format+"\n", args...)
+}
+
+func tierLabel(t scorer.Tier) string {
+	switch t {
+	case scorer.TierViolation:
+		return "VIOLATION"
+	case scorer.TierMaybe:
+		return "MAYBE"
+	default:
+		return "CLEAN"
+	}
+}
+
+func tierColor(t scorer.Tier) string {
+	switch t {
+	case scorer.TierViolation:
+		return colorRed
+	case scorer.TierMaybe:
+		return colorYellow
+	default:
+		return colorGreen
+	}
+}
+
+const (
+	colorReset = "\033[0m"
+	colorBold  = "\033[1m"
+	colorDim   = "\033[2m"
+	colorRed   = "\033[31m"
+	colorGreen = "\033[32m"
+	colorYellow = "\033[33m"
+	colorBlue  = "\033[34m"
+	colorCyan  = "\033[36m"
+)

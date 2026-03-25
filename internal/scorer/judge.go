@@ -84,6 +84,20 @@ type judgeResponse struct {
 	ViolatedPolicies []string `json:"violated_policies"`
 }
 
+var judgeResponseSchema = json.RawMessage(`{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "score": { "type": "integer" },
+    "reason": { "type": "string" },
+    "violated_policies": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "required": ["score", "reason", "violated_policies"]
+}`)
+
 // Score calls the judge LLM and returns a normalized score.
 func (j *JudgeScorer) Score(ctx context.Context, systemPrompt, attackPrompt, response string) (Score, error) {
 	userContent := fmt.Sprintf(
@@ -98,7 +112,13 @@ func (j *JudgeScorer) Score(ctx context.Context, systemPrompt, attackPrompt, res
 			{Role: openai.ChatMessageRoleUser, Content: userContent},
 		},
 		ResponseFormat: &openai.ChatCompletionResponseFormat{
-			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+			Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+			JSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+				Name:        "judge_response",
+				Description: "Structured security evaluation result",
+				Schema:      judgeResponseSchema,
+				Strict:      true,
+			},
 		},
 	}
 

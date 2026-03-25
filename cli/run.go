@@ -28,6 +28,7 @@ func NewRunCmd() *cobra.Command {
 		dryRun     bool
 		junitPath  string
 		autoPatch  bool
+		verbose    bool
 	)
 
 	cmd := &cobra.Command{
@@ -44,6 +45,9 @@ for promising attacks. Writes a JUnit XML report for GitLab CI integration.`,
 
 			if junitPath != "" {
 				cfg.Output.JUnitPath = junitPath
+			}
+			if cmd.Flags().Changed("verbose") {
+				cfg.Output.Verbose = verbose
 			}
 
 			if cfg.Output.Verbose {
@@ -106,7 +110,7 @@ for promising attacks. Writes a JUnit XML report for GitLab CI integration.`,
 			elapsed := time.Since(start)
 
 			// Print terminal summary
-			report.PrintSummary(os.Stdout, result, cfg.Target.Name, elapsed)
+			report.PrintSummary(os.Stdout, result, cfg.Target.Name, elapsed, cfg.Output.Verbose)
 
 			// Write JUnit report
 			if err := report.WriteJUnit(cfg.Output.JUnitPath, result, cfg.Target.Name, elapsed); err != nil {
@@ -131,7 +135,15 @@ for promising attacks. Writes a JUnit XML report for GitLab CI integration.`,
 							outPath = ""
 						}
 					}
-					report.PrintPatchSuggestion(os.Stdout, patchResult, outPath)
+					if cfg.Output.Verbose {
+						report.PrintPatchSuggestion(os.Stdout, patchResult, outPath)
+					} else if outPath != "" {
+						fmt.Fprintf(os.Stdout, "\nGenerated hardened config: %s\n", outPath)
+						fmt.Fprintln(os.Stdout, "Run with -v to show the full patch explanation and hardened prompt.")
+					} else {
+						fmt.Fprintln(os.Stdout, "\nGenerated a hardened prompt suggestion.")
+						fmt.Fprintln(os.Stdout, "Run with -v to show the full patch explanation and hardened prompt.")
+					}
 				}
 			}
 
@@ -148,6 +160,7 @@ for promising attacks. Writes a JUnit XML report for GitLab CI integration.`,
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Do not make API calls to the target agent")
 	cmd.Flags().StringVar(&junitPath, "junit", "", "Override JUnit XML output path")
 	cmd.Flags().BoolVar(&autoPatch, "auto-patch", false, "Write a hardened config file when violations are found")
+	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show detailed findings and progress output")
 
 	return cmd
 }

@@ -99,6 +99,30 @@ type patchResponse struct {
 	Summary string `json:"summary"`
 }
 
+var patchResponseSchema = json.RawMessage(`{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "hardened_prompt": { "type": "string" },
+    "annotations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "finding_id": { "type": "string" },
+          "technique": { "type": "string" },
+          "target": { "type": "string" },
+          "change": { "type": "string" }
+        },
+        "required": ["finding_id", "technique", "target", "change"]
+      }
+    },
+    "summary": { "type": "string" }
+  },
+  "required": ["hardened_prompt", "annotations", "summary"]
+}`)
+
 // Harden generates a patched system prompt addressing all violations.
 func (p *LLMPatcher) Harden(ctx context.Context, systemPrompt string, violations []optimizer.Finding) (*Result, error) {
 	if len(violations) == 0 {
@@ -114,7 +138,13 @@ func (p *LLMPatcher) Harden(ctx context.Context, systemPrompt string, violations
 			{Role: openai.ChatMessageRoleUser, Content: userContent},
 		},
 		ResponseFormat: &openai.ChatCompletionResponseFormat{
-			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+			Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+			JSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+				Name:        "patch_response",
+				Description: "Structured hardened prompt patch result",
+				Schema:      patchResponseSchema,
+				Strict:      true,
+			},
 		},
 	}
 

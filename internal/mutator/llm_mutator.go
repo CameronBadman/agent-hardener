@@ -93,6 +93,27 @@ type mutationResponse struct {
 	} `json:"variants"`
 }
 
+var mutationResponseSchema = json.RawMessage(`{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "variants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "text": { "type": "string" },
+          "technique": { "type": "string" },
+          "target": { "type": "string" }
+        },
+        "required": ["text", "technique", "target"]
+      }
+    }
+  },
+  "required": ["variants"]
+}`)
+
 // Mutate generates n variants of the original attack prompt.
 func (m *LLMMutator) Mutate(ctx context.Context, original attack.AttackPrompt, score scorer.Score, n int) ([]attack.AttackPrompt, error) {
 	sysPrompt := fmt.Sprintf(mutatorSystemPrompt, string(original.Technique), string(original.Target), n)
@@ -116,7 +137,13 @@ func (m *LLMMutator) Mutate(ctx context.Context, original attack.AttackPrompt, s
 			{Role: openai.ChatMessageRoleUser, Content: userContent},
 		},
 		ResponseFormat: &openai.ChatCompletionResponseFormat{
-			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+			Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+			JSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+				Name:        "mutation_response",
+				Description: "Structured list of mutated attack prompts",
+				Schema:      mutationResponseSchema,
+				Strict:      true,
+			},
 		},
 	}
 

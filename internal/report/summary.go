@@ -12,7 +12,7 @@ import (
 )
 
 // PrintSummary writes a human-readable run summary to w.
-func PrintSummary(w io.Writer, result *optimizer.Result, targetName string, elapsed time.Duration) {
+func PrintSummary(w io.Writer, result *optimizer.Result, targetName string, elapsed time.Duration, verbose bool) {
 	total := len(result.Violations) + len(result.Maybes) + len(result.Clean)
 
 	fmt.Fprintf(w, "\n%s\n", strings.Repeat("─", 60))
@@ -26,21 +26,25 @@ func PrintSummary(w io.Writer, result *optimizer.Result, targetName string, elap
 	fmt.Fprintf(w, "  Errors:             %d\n", len(result.Errors))
 	fmt.Fprintf(w, "  Duration:           %s\n\n", elapsed.Round(time.Millisecond))
 
-	if len(result.Violations) > 0 {
+	if verbose && len(result.Violations) > 0 {
 		fmt.Fprintf(w, "VIOLATIONS\n%s\n", strings.Repeat("─", 60))
 		printFindings(w, result.Violations, scorer.TierViolation)
 	}
 
-	if len(result.Maybes) > 0 {
+	if verbose && len(result.Maybes) > 0 {
 		fmt.Fprintf(w, "\nUNCERTAIN\n%s\n", strings.Repeat("─", 60))
 		printFindings(w, result.Maybes, scorer.TierMaybe)
 	}
 
-	if len(result.Errors) > 0 {
+	if verbose && len(result.Errors) > 0 {
 		fmt.Fprintf(w, "\nERRORS\n%s\n", strings.Repeat("─", 60))
 		for _, e := range result.Errors {
 			fmt.Fprintf(w, "  ! %s\n", e)
 		}
+	}
+
+	if !verbose && (len(result.Violations) > 0 || len(result.Maybes) > 0 || len(result.Errors) > 0) {
+		fmt.Fprintf(w, "  Run with -v to show detailed findings.\n\n")
 	}
 
 	fmt.Fprintf(w, "\n%s\n", strings.Repeat("─", 60))

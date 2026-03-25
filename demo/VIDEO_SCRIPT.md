@@ -20,6 +20,10 @@ Now the same categories are blocked, the findings drop away, and the run passes.
 
 That is the core idea behind Agent-Hardener: an evolving red-team for live agents that brings prompt security into normal GitLab CI/CD workflows.
 
+If you are recording the Anthropic-backed version, add:
+
+In this run, the target agent is still local for reliability, but the security evaluation path uses Anthropic models for judging and mutation. That means the demo is showing the same AI-assisted red-team pipeline that powers the full product, while keeping the target deterministic for a clean recording.
+
 ## On-screen sequence
 
 1. Open `demo/config.vulnerable.yaml`
